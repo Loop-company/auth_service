@@ -1,25 +1,10 @@
-name: CI & Docker Build (auth-service)
+name: Auth Service CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
-  workflow_dispatch:
-    inputs:
-      run_docker:
-        description: 'Build and push Docker images'
-        required: false
-        default: false
-        type: boolean
-      skip_tests:
-        description: 'Skip tests (for quick builds)'
-        required: false
-        default: false
-        type: boolean
 
 env:
-  GO_VERSION: "1.25.0"
   COVERAGE_THRESHOLD: "50"
 
 permissions:
@@ -29,7 +14,6 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
       - name: Checkout source code
@@ -38,18 +22,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: auth/go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: auth/go.sum
 
-      - name: Build auth-service
-        working-directory: ./auth
+      - name: Build auth service
+        working-directory: auth
         run: go build ./...
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
       - name: Checkout source code
@@ -58,23 +41,21 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: auth/go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: auth/go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v2.11.4
-          working-directory: ./auth
+          version: v1.64.8
+          working-directory: auth
           args: --timeout=5m
 
   test:
-    name: Test & Coverage
+    name: Test and coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [ build, lint ]
-    if: ${{ !inputs.skip_tests }}
+    needs: [build, lint]
 
     steps:
       - name: Checkout source code
@@ -83,44 +64,46 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: auth/go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: auth/go.sum
 
       - name: Run tests with coverage
-        working-directory: ./auth-service
-        run: |
-          go test -coverprofile=coverage.out -covermode=atomic \
-            -coverpkg=./internal/... \
-            ./...
+        working-directory: auth
+        run: go test -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/... ./...
 
-      - name: Enforce coverage threshold
-        working-directory: ./auth-service
+      - name: Check coverage threshold
+        working-directory: auth
+        shell: bash
         run: |
-          coverage=$(go tool cover -func=coverage.out | awk '/total:/ {gsub("%","",$3); print $3}')
+          go tool cover -func=coverage.out | tee coverage.txt
+          awk -v threshold="$COVERAGE_THRESHOLD" '
+            /^total:/ {
+              gsub(/%/, "", $3)
+              if ($3 + 0 < threshold + 0) {
+                printf("coverage %.1f%% is below %.1f%%\n", $3, threshold)
+                exit 1
+              }
+              printf("coverage %.1f%% meets threshold %.1f%%\n", $3, threshold)
+            }
+          ' coverage.txt
 
-      - name: Upload coverage report
+      - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-auth-service
-          path: coverage.out
-          retention-days: 7
+          name: auth-service-coverage
+          path: |
+            auth/coverage.out
+            auth/coverage.txt
 
   docker_build:
-    name: Build Docker Image
+    name: Docker build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [ build, lint, test ]
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_docker == true)
+    needs: [build, lint, test]
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Resolve Docker image metadata
         id: meta
@@ -138,34 +121,34 @@ jobs:
           echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
           echo "tag=${branch_slug}-${short_sha}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ./auth-service
-          file: ./auth-service/Dockerfile
+          context: ./auth
+          file: ./auth/Dockerfile
           push: false
           load: true
-          tags: docker.io/${{ steps.meta.outputs.namespace }}/loop-auth-service:${{ steps.meta.outputs.tag }}
+          tags: docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }}
 
-
-      - name: Save Docker image as artifact
+      - name: Save Docker image
         shell: bash
         run: |
           mkdir -p images
-          docker save docker.io/${{ steps.meta.outputs.namespace }}/loop-auth-service:${{ steps.meta.outputs.tag }} -o images/auth-service.tar
+          docker save docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }} -o images/auth-service.tar
 
-      - name: Upload Docker image
+      - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-image-auth-service
-          path: images/
-          retention-days: 7
+          name: auth-service-image
+          path: images/auth-service.tar
 
   docker_push:
-    name: Push Docker Image
+    name: Docker push
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [ docker_build ]
+    needs: [docker_build]
     if: github.event_name == 'push'
 
     steps:
@@ -185,16 +168,15 @@ jobs:
           echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
           echo "tag=${branch_slug}-${short_sha}" >> "$GITHUB_OUTPUT"
 
-      - name: Download Docker image
+      - name: Download Docker image artifact
         uses: actions/download-artifact@v4
         with:
-          name: docker-image-auth-service
+          name: auth-service-image
           path: images
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -202,5 +184,4 @@ jobs:
         shell: bash
         run: |
           docker load -i images/auth-service.tar
-          docker push docker.io/${{ steps.meta.outputs.namespace }}/loop-auth-service:${{ steps.meta.outputs.tag }}
-          echo "✅ Pushed auth-service:${{ steps.meta.outputs.tag }}"
+          docker push docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }}
