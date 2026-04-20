@@ -163,10 +163,10 @@ func (auth *Auth) ConfirmVerificationCode(ctx context.Context, email, code strin
 	guid, err := auth.userRepo.SaveUser(ctx, pending.Email, pending.PassHash)
 	if err != nil {
 		if errors.Is(err, ErrUserExists) {
-			log.Warn("user already exists", err)
+			log.Warn("user already exists", "error", err)
 			return "", ErrUserExists
 		}
-		log.Error("failed to save user", err)
+		log.Error("failed to save user", "error", err)
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -192,12 +192,12 @@ func (auth *Auth) Login(ctx *gin.Context, email string, password string) (jwt.To
 			return jwt.TokenPair{}, "", ErrUserNotFound
 		}
 
-		log.Error("failed to find user", err)
+		log.Error("failed to find user", "error", err)
 		return jwt.TokenPair{}, "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
-		log.Info("invalid credentials", err)
+		log.Info("invalid credentials", "error", err)
 		return jwt.TokenPair{}, "", ErrInvalidCredentials
 	}
 
@@ -207,7 +207,7 @@ func (auth *Auth) Login(ctx *gin.Context, email string, password string) (jwt.To
 
 	tokenPair, err := jwt.NewTokenPair(user, auth.accessTokenTTL, auth.jwtSecret, sessionID)
 	if err != nil {
-		log.Error("failed to generate token pair", err)
+		log.Error("failed to generate token pair", "error", err)
 		return jwt.TokenPair{}, "", fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -226,7 +226,7 @@ func (auth *Auth) Login(ctx *gin.Context, email string, password string) (jwt.To
 
 	errTokenSave := auth.tokenRepo.SaveToken(ctx, &refreshToken)
 	if errTokenSave != nil {
-		log.Error("failed to save refresh token", errTokenSave)
+		log.Error("failed to save refresh token", "error", errTokenSave)
 		return jwt.TokenPair{}, "", fmt.Errorf("%s: failed to store refresh token: %w", op, errTokenSave)
 	}
 
@@ -241,7 +241,7 @@ func (auth *Auth) GetTokenPairByUserGUID(ctx *gin.Context, guid string) (jwt.Tok
 
 	currentUserGUID, err := auth.GetCurrentUserGUID(ctx)
 	if err != nil {
-		log.Error("failed to get current user GUID", err)
+		log.Error("failed to get current user GUID", "error", err)
 		return jwt.TokenPair{}, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -255,7 +255,7 @@ func (auth *Auth) GetTokenPairByUserGUID(ctx *gin.Context, guid string) (jwt.Tok
 		if errors.Is(err, repo.ErrUserNotFound) {
 			return jwt.TokenPair{}, ErrUserNotFound
 		}
-		log.Error("failed to get token pair", err)
+		log.Error("failed to get token pair", "error", err)
 		return jwt.TokenPair{}, err
 	}
 
@@ -263,7 +263,7 @@ func (auth *Auth) GetTokenPairByUserGUID(ctx *gin.Context, guid string) (jwt.Tok
 
 	newTokenPair, err := jwt.NewTokenPair(user, auth.accessTokenTTL, auth.jwtSecret, sessionID)
 	if err != nil {
-		log.Error("failed to generate token pair", err)
+		log.Error("failed to generate token pair", "error", err)
 		return jwt.TokenPair{}, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -282,7 +282,7 @@ func (auth *Auth) GetTokenPairByUserGUID(ctx *gin.Context, guid string) (jwt.Tok
 
 	errTokenSave := auth.tokenRepo.SaveToken(ctx, &refreshToken)
 	if errTokenSave != nil {
-		log.Error("failed to save refresh token", errTokenSave)
+		log.Error("failed to save refresh token", "error", errTokenSave)
 		return jwt.TokenPair{}, fmt.Errorf("%s: failed to store refresh token: %w", op, errTokenSave)
 	}
 
@@ -326,7 +326,7 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 
 	savedRefreshToken, err := auth.tokenRepo.GetRefreshTokenByUserGUID(ctx, userGUID)
 	if err != nil {
-		log.Error("failed to get refresh token from DB", err)
+		log.Error("failed to get refresh token from DB", "error", err)
 		return jwt.TokenPair{}, ErrInvalidToken
 	}
 
@@ -335,7 +335,7 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 
 		logoutError := auth.Logout(ctx)
 		if logoutError != nil {
-			log.Error("failed to logout", logoutError)
+			log.Error("failed to logout", "error", logoutError)
 			return jwt.TokenPair{}, logoutError
 		}
 
@@ -344,11 +344,11 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 
 	err = jwt.VerifyRefreshToken(refreshToken, savedRefreshToken.TokenHash)
 	if err != nil {
-		log.Error("failed to verify refresh token", err)
+		log.Error("failed to verify refresh token", "error", err)
 
 		logoutError := auth.Logout(ctx)
 		if logoutError != nil {
-			log.Error("failed to logout", logoutError)
+			log.Error("failed to logout", "error", logoutError)
 			return jwt.TokenPair{}, logoutError
 		}
 
@@ -378,7 +378,7 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 
 		logoutError := auth.Logout(ctx)
 		if logoutError != nil {
-			log.Error("failed to logout", logoutError)
+			log.Error("failed to logout", "error", logoutError)
 			return jwt.TokenPair{}, logoutError
 		}
 
@@ -389,13 +389,13 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 
 	user, err := auth.userRepo.GetUserByGUID(ctx, userGUID)
 	if err != nil {
-		log.Error("failed to get user by GUID", err)
+		log.Error("failed to get user by GUID", "error", err)
 		return jwt.TokenPair{}, ErrUserNotFound
 	}
 
 	newTokenPair, err := jwt.NewTokenPair(user, auth.accessTokenTTL, auth.jwtSecret, savedRefreshToken.SessionID)
 	if err != nil {
-		log.Error("failed to generate token pair", err)
+		log.Error("failed to generate token pair", "error", err)
 		return jwt.TokenPair{}, err
 	}
 
@@ -410,7 +410,7 @@ func (auth *Auth) RefreshTokens(ctx *gin.Context, refreshToken string) (jwt.Toke
 	}
 
 	if err := auth.tokenRepo.SaveToken(ctx, &newRefreshToken); err != nil {
-		log.Error("failed to save refresh token", err)
+		log.Error("failed to save refresh token", "error", err)
 		return jwt.TokenPair{}, err
 	}
 
@@ -426,13 +426,13 @@ func (auth *Auth) Logout(ctx *gin.Context) error {
 
 	userGUID, err := auth.GetCurrentUserGUID(ctx)
 	if err != nil {
-		log.Error("failed to get current user GUID in context", err)
+		log.Error("failed to get current user GUID in context", "error", err)
 		return ErrUserNotFound
 	}
 
 	err = auth.tokenRepo.DeleteTokenByUserGUID(ctx, userGUID)
 	if err != nil {
-		log.Error("failed to delete token by GUID in context", err)
+		log.Error("failed to delete token by GUID in context", "error", err)
 		return err
 	}
 
