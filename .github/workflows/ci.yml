@@ -43,6 +43,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build auth-service
+        working-directory: ./auth
         run: go build ./...
 
   lint:
@@ -65,6 +66,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
+          working-directory: ./auth
           args: --timeout=5m
 
   test:
