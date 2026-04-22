@@ -74,19 +74,14 @@ jobs:
 
       - name: Check coverage threshold
         working-directory: auth
-        shell: bash
         run: |
-          go tool cover -func=coverage.out | tee coverage.txt
-          awk -v threshold="$COVERAGE_THRESHOLD" '
-            /^total:/ {
-              gsub(/%/, "", $3)
-              if ($3 + 0 < threshold + 0) {
-                printf("coverage %.1f%% is below %.1f%%\n", $3, threshold)
-                exit 1
-              }
-              printf("coverage %.1f%% meets threshold %.1f%%\n", $3, threshold)
-            }
-          ' coverage.txt
+          total=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+          echo "Total coverage: $total%"
+      
+          if (( $(echo "$total < $COVERAGE_THRESHOLD" | bc -l) )); then
+            echo "Coverage is below threshold ($COVERAGE_THRESHOLD%)"
+            exit 1
+          fi
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
@@ -105,20 +100,13 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Resolve Docker image metadata
+      - name: Set image tag
         id: meta
-        shell: bash
-        env:
-          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
         run: |
-          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          branch_slug=$(echo "$branch" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9._-]#-#g')
-          namespace="$DOCKERHUB_NAMESPACE"
-          if [ -z "$namespace" ]; then
-            namespace=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          fi
+          branch="${GITHUB_REF_NAME}"
+          branch_slug=$(echo "$branch" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9._-')
           short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
+      
           echo "tag=${branch_slug}-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -131,13 +119,13 @@ jobs:
           file: ./auth/Dockerfile
           push: false
           load: true
-          tags: docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/auth-service:${{ steps.meta.outputs.tag }}
 
       - name: Save Docker image
         shell: bash
         run: |
           mkdir -p images
-          docker save docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }} -o images/auth-service.tar
+          docker save docker.io/${{ secrets.DOCKERHUB_USERNAME }}/auth-service:${{ steps.meta.outputs.tag }} -o images/auth-service.tar
 
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
@@ -152,20 +140,13 @@ jobs:
     if: github.event_name == 'push'
 
     steps:
-      - name: Resolve Docker image metadata
+      - name: Set image tag
         id: meta
-        shell: bash
-        env:
-          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
         run: |
-          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          branch_slug=$(echo "$branch" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9._-]#-#g')
-          namespace="$DOCKERHUB_NAMESPACE"
-          if [ -z "$namespace" ]; then
-            namespace=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          fi
+          branch="${GITHUB_REF_NAME}"
+          branch_slug=$(echo "$branch" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9._-')
           short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
+      
           echo "tag=${branch_slug}-${short_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Download Docker image artifact
@@ -184,4 +165,4 @@ jobs:
         shell: bash
         run: |
           docker load -i images/auth-service.tar
-          docker push docker.io/${{ steps.meta.outputs.namespace }}/auth-service:${{ steps.meta.outputs.tag }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/auth-service:${{ steps.meta.outputs.tag }}
