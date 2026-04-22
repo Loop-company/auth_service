@@ -1,0 +1,4 @@
+profile: auth/coverage.out
+
+threshold:
+  total: 50
