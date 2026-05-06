@@ -45,7 +45,6 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.0
           working-directory: auth
           args: --config=../.golangci.yml
 
