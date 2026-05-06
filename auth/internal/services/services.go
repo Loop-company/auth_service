@@ -13,7 +13,6 @@ import (
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/entity"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/lib/jwt"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/repo"
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
