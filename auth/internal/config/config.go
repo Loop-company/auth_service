@@ -12,6 +12,7 @@ type Config struct {
 	AccessTokenTTL  time.Duration `yaml:"access_ttl" env:"ACCESS_TTL"`
 	RefreshTokenTTL time.Duration `yaml:"refresh_ttl" env:"REFRESH_TTL"`
 	HTTP            HTTPConfig    `yaml:"http"`
+	GRPC            GRPCConfig    `yaml:"grpc"`
 	Secret          string        `yaml:"secret" env:"AUTH_SECRET"`
 	DB              DBConfig      `yaml:"postgres"`
 	SMTP            SMTPConfig    `yaml:"smtp"`
@@ -20,6 +21,10 @@ type Config struct {
 
 type HTTPConfig struct {
 	Port string `yaml:"port" env:"HTTP_PORT"`
+}
+
+type GRPCConfig struct {
+	Port string `yaml:"port" env:"GRPC_PORT" env-default:"50051"`
 }
 
 type DBConfig struct {

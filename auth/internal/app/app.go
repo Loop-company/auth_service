@@ -6,16 +6,25 @@ import (
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/cache"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/config"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/email"
+	authgrpc "github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/grpc"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/handlers"
+	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/httpauth"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/repo"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/routes"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/services"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/storage"
+	authpb "github.com/Egor4iksls4/DiscordEquivalent/backend/auth/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 )
 
-func NewApp(cfg *config.Config) (*gin.Engine, error) {
+type App struct {
+	HTTPServer *gin.Engine
+	GRPCServer *grpc.Server
+}
+
+func NewApp(cfg *config.Config) (*App, error) {
 	logger := slog.Default()
 
 	database, err := storage.InitDB(cfg)
@@ -32,13 +41,24 @@ func NewApp(cfg *config.Config) (*gin.Engine, error) {
 	redisStorage := cache.NewRedisVerificationStorage(redisClient)
 
 	service := services.NewAuth(logger, repository, repository, redisStorage, emailClient, cfg.Secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
-	handler := handlers.NewAuthHandler(service)
+	cookieCfg := httpauth.CookieConfig{
+		RefreshTTL: cfg.RefreshTokenTTL,
+		Secure:     cfg.Env == "prod",
+	}
+	handler := handlers.NewAuthHandler(service, cookieCfg)
 
 	r := gin.Default()
 	auth := r.Group("/auth")
-	routes.RegisterRoutes(auth, handler, cfg.Secret)
+	routes.RegisterRoutes(auth, handler, service)
 
-	return r, nil
+	grpcServer := grpc.NewServer()
+	authServer := authgrpc.NewAuthServer(service)
+	authpb.RegisterAuthServiceServer(grpcServer, authServer)
+
+	return &App{
+		HTTPServer: r,
+		GRPCServer: grpcServer,
+	}, nil
 }
 
 func buildEmailClient(cfg *config.Config, logger *slog.Logger) services.EmailClient {

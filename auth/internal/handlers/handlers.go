@@ -4,16 +4,22 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/httpauth"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
-	auth *services.Auth
+	auth         *services.Auth
+	cookieConfig httpauth.CookieConfig
 }
 
-func NewAuthHandler(auth *services.Auth) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth *services.Auth, cookieConfig ...httpauth.CookieConfig) *AuthHandler {
+	cfg := httpauth.CookieConfig{}
+	if len(cookieConfig) > 0 {
+		cfg = cookieConfig[0]
+	}
+	return &AuthHandler{auth: auth, cookieConfig: cfg}
 }
 
 func (h *AuthHandler) SendEmailWithCode(ctx *gin.Context) {
@@ -75,17 +81,44 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 		return
 	}
 
-	tokenPair, guid, err := h.auth.Login(ctx, req.Email, req.Password)
+	userAgent := ctx.GetHeader("User-Agent")
+	ip := ctx.ClientIP()
+
+	tokenPair, guid, err := h.auth.Login(ctx, req.Email, req.Password, userAgent, ip)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		switch {
+		case errors.Is(err, services.ErrInvalidCredentials), errors.Is(err, services.ErrUserNotFound):
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		default:
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to authorize user"})
+		}
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"guid": guid, "access_token": tokenPair.AccessToken, "refresh_token": tokenPair.RefreshToken})
+	httpauth.SetTokenCookies(ctx, h.cookieConfig, tokenPair.AccessToken, tokenPair.RefreshToken)
+	ctx.JSON(http.StatusOK, gin.H{
+		"guid":               guid,
+		"access_token":       tokenPair.AccessToken,
+		"refresh_token":      tokenPair.RefreshToken,
+		"access_expires_at":  tokenPair.AccessExpiresAt,
+		"refresh_expires_at": tokenPair.RefreshExpiresAt,
+	})
 }
 
 func (h *AuthHandler) Logout(ctx *gin.Context) {
-	err := h.auth.Logout(ctx)
+	userGUID, exists := ctx.Get("user_guid")
+	if !exists {
+		accessToken := httpauth.ExtractAccessToken(ctx)
+		claims, err := h.auth.ValidateAccessToken(ctx, accessToken)
+		if err != nil {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		userGUID = claims.GUID
+	}
+
+	err := h.auth.Logout(ctx, userGUID.(string))
+	httpauth.ClearTokenCookies(ctx, h.cookieConfig)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -95,9 +128,9 @@ func (h *AuthHandler) Logout(ctx *gin.Context) {
 }
 
 func (h *AuthHandler) GetCurrentUserGUID(ctx *gin.Context) {
-	guid, err := h.auth.GetCurrentUserGUID(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	guid, exists := ctx.Get("user_guid")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
@@ -114,13 +147,28 @@ func (h *AuthHandler) GetTokenPairByUserGUID(ctx *gin.Context) {
 		return
 	}
 
-	tokenPair, err := h.auth.GetTokenPairByUserGUID(ctx, req.GUID)
+	currentUserGUID, exists := ctx.Get("user_guid")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userAgent := ctx.GetHeader("User-Agent")
+	ip := ctx.ClientIP()
+
+	tokenPair, err := h.auth.GetTokenPairByUserGUID(ctx, req.GUID, currentUserGUID.(string), userAgent, ip)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"access_token": tokenPair.AccessToken, "refresh_token": tokenPair.RefreshToken})
+	httpauth.SetTokenCookies(ctx, h.cookieConfig, tokenPair.AccessToken, tokenPair.RefreshToken)
+	ctx.JSON(http.StatusOK, gin.H{
+		"access_token":       tokenPair.AccessToken,
+		"refresh_token":      tokenPair.RefreshToken,
+		"access_expires_at":  tokenPair.AccessExpiresAt,
+		"refresh_expires_at": tokenPair.RefreshExpiresAt,
+	})
 }
 
 func (h *AuthHandler) RefreshTokens(ctx *gin.Context) {
@@ -133,11 +181,35 @@ func (h *AuthHandler) RefreshTokens(ctx *gin.Context) {
 		return
 	}
 
-	tokenPair, err := h.auth.RefreshTokens(ctx, req.RefreshToken)
+	userGUID, exists := ctx.Get("user_guid")
+	sessionID, sExists := ctx.Get("session_id")
+
+	if !exists || !sExists {
+		accessToken := httpauth.ExtractAccessToken(ctx)
+		claims, err := h.auth.ParseTokenAllowExpired(accessToken)
+		if err != nil {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid access token"})
+			return
+		}
+		userGUID = claims.GUID
+		sessionID = claims.SessionID
+	}
+
+	userAgent := ctx.GetHeader("User-Agent")
+	ip := ctx.ClientIP()
+
+	tokenPair, err := h.auth.RefreshTokens(ctx, req.RefreshToken, userGUID.(string), sessionID.(string), userAgent, ip)
 	if err != nil {
+		httpauth.ClearTokenCookies(ctx, h.cookieConfig)
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"access_token": tokenPair.AccessToken, "refresh_token": tokenPair.RefreshToken})
+	httpauth.SetTokenCookies(ctx, h.cookieConfig, tokenPair.AccessToken, tokenPair.RefreshToken)
+	ctx.JSON(http.StatusOK, gin.H{
+		"access_token":       tokenPair.AccessToken,
+		"refresh_token":      tokenPair.RefreshToken,
+		"access_expires_at":  tokenPair.AccessExpiresAt,
+		"refresh_expires_at": tokenPair.RefreshExpiresAt,
+	})
 }

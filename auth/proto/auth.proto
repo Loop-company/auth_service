@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "github.com/Egor4iksls4/DiscordEquivalent/backend/auth/proto;authpb";
+
+service AuthService {
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+  rpc Verify (VerifyRequest) returns (VerifyResponse);
+  rpc Login (LoginRequest) returns (LoginResponse);
+  rpc Refresh (RefreshRequest) returns (LoginResponse);
+  rpc Logout (LogoutRequest) returns (Empty);
+  rpc GetProfileGUID (GetProfileGUIDRequest) returns (GetProfileGUIDResponse);
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RegisterResponse {
+  string message = 1;
+}
+
+message VerifyRequest {
+  string email = 1;
+  string code = 2;
+}
+
+message VerifyResponse {
+  string guid = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string guid = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int64 access_expires_at = 4;
+  int64 refresh_expires_at = 5;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message LogoutRequest {
+  // We can pass access_token or use metadata
+}
+
+message GetProfileGUIDRequest {
+  // We can use metadata
+}
+
+message GetProfileGUIDResponse {
+  string guid = 1;
+}
+
+message ValidateTokenRequest {
+  string access_token = 1;
+}
+
+message ValidateTokenResponse {
+  string guid = 1;
+  string session_id = 2;
+}
+
+message Empty {}
