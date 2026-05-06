@@ -43,9 +43,9 @@ jobs:
           cache-dependency-path: auth/go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.5
+          version: v1.64
           working-directory: auth
 
   test:
