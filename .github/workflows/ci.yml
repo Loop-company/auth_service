@@ -47,6 +47,7 @@ jobs:
         with:
           version: latest
           working-directory: auth
+          args: --config=../.golangci.yml
 
   test:
     name: Test and coverage
