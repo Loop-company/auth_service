@@ -11,7 +11,6 @@ type Config struct {
 	Env             string        `yaml:"env" env:"APP_ENV" env-default:"local"`
 	AccessTokenTTL  time.Duration `yaml:"access_ttl" env:"ACCESS_TTL"`
 	RefreshTokenTTL time.Duration `yaml:"refresh_ttl" env:"REFRESH_TTL"`
-	HTTP            HTTPConfig    `yaml:"http"`
 	GRPC            GRPCConfig    `yaml:"grpc"`
 	Secret          string        `yaml:"secret" env:"AUTH_SECRET"`
 	DB              DBConfig      `yaml:"postgres"`
@@ -22,10 +21,6 @@ type Config struct {
 
 type KafkaConfig struct {
 	Brokers []string `yaml:"brokers" env:"KAFKA_BROKERS" env-separator:"," env-default:"localhost:9092"`
-}
-
-type HTTPConfig struct {
-	Port string `yaml:"port" env:"HTTP_PORT"`
 }
 
 type GRPCConfig struct {
