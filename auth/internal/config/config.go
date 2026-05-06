@@ -17,6 +17,11 @@ type Config struct {
 	DB              DBConfig      `yaml:"postgres"`
 	SMTP            SMTPConfig    `yaml:"smtp"`
 	RedisAddress    string        `yaml:"redis_addr" env:"REDIS_ADDR"`
+	Kafka           KafkaConfig   `yaml:"kafka"`
+}
+
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers" env:"KAFKA_BROKERS" env-separator:"," env-default:"localhost:9092"`
 }
 
 type HTTPConfig struct {

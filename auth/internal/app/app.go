@@ -6,6 +6,7 @@ import (
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/cache"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/config"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/email"
+	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/eventbus"
 	authgrpc "github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/grpc"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/handlers"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/httpauth"
@@ -40,7 +41,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 	redisStorage := cache.NewRedisVerificationStorage(redisClient)
 
-	service := services.NewAuth(logger, repository, repository, redisStorage, emailClient, cfg.Secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	kafkaProducer := eventbus.NewKafkaProducer(cfg.Kafka.Brokers, logger)
+
+	service := services.NewAuth(logger, repository, repository, redisStorage, emailClient, kafkaProducer, cfg.Secret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	cookieCfg := httpauth.CookieConfig{
 		RefreshTTL: cfg.RefreshTokenTTL,
 		Secure:     cfg.Env == "prod",

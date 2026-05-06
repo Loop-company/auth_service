@@ -50,12 +50,18 @@ type EmailClient interface {
 	SendVerificationCode(to, code string) error
 }
 
+type EventBus interface {
+	SendUserRegistered(ctx context.Context, userID, email string)
+	SendUserLoggedIn(ctx context.Context, userID, email string)
+}
+
 type Auth struct {
 	log             *slog.Logger
 	tokenRepo       TokenRepository
 	userRepo        UserRepository
 	redisStorage    RedisStorage
 	emailClient     EmailClient
+	eventBus        EventBus
 	jwtSecret       string
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
@@ -66,6 +72,7 @@ func NewAuth(log *slog.Logger,
 	userRepo UserRepository,
 	redisStorage RedisStorage,
 	emailClient EmailClient,
+	eventBus EventBus,
 	jwtSecret string,
 	accessTokenTTL,
 	refreshTokenTTL time.Duration) *Auth {
@@ -75,6 +82,7 @@ func NewAuth(log *slog.Logger,
 		userRepo:        userRepo,
 		redisStorage:    redisStorage,
 		emailClient:     emailClient,
+		eventBus:        eventBus,
 		jwtSecret:       jwtSecret,
 		accessTokenTTL:  accessTokenTTL,
 		refreshTokenTTL: refreshTokenTTL,
@@ -177,6 +185,9 @@ func (auth *Auth) ConfirmVerificationCode(ctx context.Context, email, code strin
 	}
 
 	log.Info("User successfully verified and created", "user_guid", guid)
+
+	auth.eventBus.SendUserRegistered(ctx, guid, pending.Email)
+
 	return guid, nil
 }
 
@@ -227,6 +238,8 @@ func (auth *Auth) Login(ctx context.Context, email string, password string, user
 		log.Error("failed to save refresh token", "error", errTokenSave)
 		return jwt.TokenPair{}, "", fmt.Errorf("%s: failed to store refresh token: %w", op, errTokenSave)
 	}
+
+	auth.eventBus.SendUserLoggedIn(ctx, user.GUID, email)
 
 	return *tokenPair, user.GUID, nil
 }
