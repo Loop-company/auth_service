@@ -89,6 +89,11 @@ func (m *emailClientMock) SendVerificationCode(to, code string) error {
 	return nil
 }
 
+type eventBusMock struct{}
+
+func (m *eventBusMock) SendUserRegistered(ctx context.Context, userID, email string) {}
+func (m *eventBusMock) SendUserLoggedIn(ctx context.Context, userID, email string)   {}
+
 func newHandler(auth *services.Auth) *AuthHandler {
 	return NewAuthHandler(auth)
 }
@@ -101,6 +106,7 @@ func newAuthService(userRepo services.UserRepository, redisStorage services.Redi
 		userRepo,
 		redisStorage,
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,

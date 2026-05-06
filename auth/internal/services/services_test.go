@@ -5,13 +5,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/entity"
 	"github.com/Egor4iksls4/DiscordEquivalent/backend/auth/internal/lib/jwt"
-	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -115,6 +113,23 @@ func (m *emailClientMock) SendVerificationCode(to, code string) error {
 	return nil
 }
 
+type eventBusMock struct {
+	sendUserRegisteredFunc func(ctx context.Context, userID, email string)
+	sendUserLoggedInFunc   func(ctx context.Context, userID, email string)
+}
+
+func (m *eventBusMock) SendUserRegistered(ctx context.Context, userID, email string) {
+	if m.sendUserRegisteredFunc != nil {
+		m.sendUserRegisteredFunc(ctx, userID, email)
+	}
+}
+
+func (m *eventBusMock) SendUserLoggedIn(ctx context.Context, userID, email string) {
+	if m.sendUserLoggedInFunc != nil {
+		m.sendUserLoggedInFunc(ctx, userID, email)
+	}
+}
+
 func newTestAuth() *Auth {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewAuth(
@@ -123,6 +138,7 @@ func newTestAuth() *Auth {
 		&userRepoMock{},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -173,6 +189,7 @@ func TestSendingEmailWithCodeSuccess(t *testing.T) {
 				return nil
 			},
 		},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -210,6 +227,7 @@ func TestSendingEmailWithCodeReturnsUserExistsError(t *testing.T) {
 		},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -235,6 +253,7 @@ func TestSendingEmailWithCodeSwallowsEmailErrors(t *testing.T) {
 				return errors.New("smtp failed")
 			},
 		},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -275,6 +294,7 @@ func TestConfirmVerificationCode(t *testing.T) {
 			},
 		},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -300,6 +320,7 @@ func TestConfirmVerificationCodeRejectsInvalidCode(t *testing.T) {
 			},
 		},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
@@ -310,29 +331,7 @@ func TestConfirmVerificationCodeRejectsInvalidCode(t *testing.T) {
 	}
 }
 
-func TestGetCurrentUserGUID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-123")
-
-	auth := newTestAuth()
-
-	guid, err := auth.GetCurrentUserGUID(ctx)
-	if err != nil {
-		t.Fatalf("GetCurrentUserGUID returned error: %v", err)
-	}
-	if guid != "guid-123" {
-		t.Fatalf("expected guid %q, got %q", "guid-123", guid)
-	}
-}
-
 func TestLogoutDeletesToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-logout")
-
 	var deletedGUID string
 	auth := NewAuth(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -345,12 +344,13 @@ func TestLogoutDeletesToken(t *testing.T) {
 		&userRepoMock{},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	if err := auth.Logout(ctx); err != nil {
+	if err := auth.Logout(context.Background(), "guid-logout"); err != nil {
 		t.Fatalf("Logout returned error: %v", err)
 	}
 	if deletedGUID != "guid-logout" {
@@ -359,14 +359,6 @@ func TestLogoutDeletesToken(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest("POST", "/auth/login", nil)
-	req.Header.Set("User-Agent", "test-agent")
-	req.RemoteAddr = "127.0.0.1:12345"
-	ctx.Request = req
-
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatalf("failed to create password hash: %v", err)
@@ -392,12 +384,13 @@ func TestLogin(t *testing.T) {
 		},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	tokenPair, guid, err := auth.Login(ctx, "user@example.com", "secret123")
+	tokenPair, guid, err := auth.Login(context.Background(), "user@example.com", "secret123", "test-agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Login returned error: %v", err)
 	}
@@ -413,31 +406,20 @@ func TestLogin(t *testing.T) {
 	if savedToken.UserGUID != "guid-login" {
 		t.Fatalf("expected saved token guid %q, got %q", "guid-login", savedToken.UserGUID)
 	}
+	if savedToken.UserAgent != "test-agent" {
+		t.Fatalf("expected saved User-Agent %q, got %q", "test-agent", savedToken.UserAgent)
+	}
 }
 
 func TestGetTokenPairByUserGUIDRejectsAnotherUser(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-1")
-
 	auth := newTestAuth()
 
-	if _, err := auth.GetTokenPairByUserGUID(ctx, "guid-2"); !errors.Is(err, ErrAccessDenied) {
+	if _, err := auth.GetTokenPairByUserGUID(context.Background(), "guid-2", "guid-1", "agent", "127.0.0.1"); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("expected ErrAccessDenied, got %v", err)
 	}
 }
 
 func TestGetTokenPairByUserGUIDSuccess(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest("GET", "/auth/tokens", nil)
-	req.Header.Set("User-Agent", "test-agent")
-	req.RemoteAddr = "127.0.0.1:12345"
-	ctx.Request = req
-	ctx.Set("user_guid", "guid-1")
-
 	var savedToken *entity.RefreshToken
 	auth := NewAuth(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -454,12 +436,13 @@ func TestGetTokenPairByUserGUIDSuccess(t *testing.T) {
 		},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	tokenPair, err := auth.GetTokenPairByUserGUID(ctx, "guid-1")
+	tokenPair, err := auth.GetTokenPairByUserGUID(context.Background(), "guid-1", "guid-1", "test-agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("GetTokenPairByUserGUID returned error: %v", err)
 	}
@@ -472,12 +455,6 @@ func TestGetTokenPairByUserGUIDSuccess(t *testing.T) {
 }
 
 func TestRefreshTokensRejectsMissingSessionID(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-1")
-	ctx.Request = httptest.NewRequest("POST", "/auth/refresh", nil)
-
 	auth := NewAuth(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		&tokenRepoMock{
@@ -494,24 +471,18 @@ func TestRefreshTokensRejectsMissingSessionID(t *testing.T) {
 		&userRepoMock{},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	if _, err := auth.RefreshTokens(ctx, "refresh-token"); !errors.Is(err, ErrInvalidToken) {
+	if _, err := auth.RefreshTokens(context.Background(), "refresh-token", "", "", "agent", "127.0.0.1"); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
 }
 
 func TestRefreshTokensRejectsExpiredToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-1")
-	ctx.Set("session_id", "session-1")
-	ctx.Request = httptest.NewRequest("POST", "/auth/refresh", nil)
-
 	loggedOut := false
 	auth := NewAuth(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -533,12 +504,13 @@ func TestRefreshTokensRejectsExpiredToken(t *testing.T) {
 		&userRepoMock{},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	if _, err := auth.RefreshTokens(ctx, "refresh-token"); !errors.Is(err, ErrInvalidToken) {
+	if _, err := auth.RefreshTokens(context.Background(), "refresh-token", "guid-1", "session-1", "agent", "127.0.0.1"); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
 	if !loggedOut {
@@ -547,16 +519,6 @@ func TestRefreshTokensRejectsExpiredToken(t *testing.T) {
 }
 
 func TestRefreshTokensSuccess(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Set("user_guid", "guid-1")
-	ctx.Set("session_id", "session-1")
-	req := httptest.NewRequest("POST", "/auth/refresh", nil)
-	req.Header.Set("User-Agent", "test-agent")
-	req.RemoteAddr = "127.0.0.1:12345"
-	ctx.Request = req
-
 	tokenPair, err := jwt.NewTokenPair(entity.User{GUID: "guid-1"}, time.Minute, "secret", "session-1")
 	if err != nil {
 		t.Fatalf("failed to create token pair: %v", err)
@@ -587,12 +549,13 @@ func TestRefreshTokensSuccess(t *testing.T) {
 		},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
 	)
 
-	refreshedPair, err := auth.RefreshTokens(ctx, tokenPair.RefreshToken)
+	refreshedPair, err := auth.RefreshTokens(context.Background(), tokenPair.RefreshToken, "guid-1", "session-1", "test-agent", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("RefreshTokens returned error: %v", err)
 	}

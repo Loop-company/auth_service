@@ -171,7 +171,7 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *authpb.ValidateToke
 
 	return &authpb.ValidateTokenResponse{
 		Guid:      claims.GUID,
-		SessionID: claims.SessionID,
+		SessionId: claims.SessionID,
 	}, nil
 }
 

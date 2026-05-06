@@ -74,6 +74,11 @@ func (m *emailClientMock) SendVerificationCode(to, code string) error {
 	return nil
 }
 
+type eventBusMock struct{}
+
+func (m *eventBusMock) SendUserRegistered(ctx context.Context, userID, email string) {}
+func (m *eventBusMock) SendUserLoggedIn(ctx context.Context, userID, email string)   {}
+
 func TestRegisterRoutesAddsPublicAndProtectedEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -92,6 +97,7 @@ func TestRegisterRoutesAddsPublicAndProtectedEndpoints(t *testing.T) {
 		},
 		&redisStorageMock{},
 		&emailClientMock{},
+		&eventBusMock{},
 		"secret",
 		time.Minute,
 		24*time.Hour,
