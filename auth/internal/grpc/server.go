@@ -71,17 +71,9 @@ func (s *AuthServer) Login(ctx context.Context, req *authpb.LoginRequest) (*auth
 func (s *AuthServer) Refresh(ctx context.Context, req *authpb.RefreshRequest) (*authpb.LoginResponse, error) {
 	userAgent, ip := extractMetadata(ctx)
 
-	// In gRPC we need to know which user is refreshing.
-	// We can get it from ValidateToken if we pass it, or require it in metadata.
-	// For now, let's assume we use ValidateToken before calling Refresh if needed,
-	// or we extract it from the expired token.
-
-	// Since we don't have the access token in RefreshRequest, we might need to add it
-	// or expect it in metadata.
-
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "missing metadata")
+		md = metadata.MD{}
 	}
 
 	var userGUID, sessionID string
@@ -93,18 +85,19 @@ func (s *AuthServer) Refresh(ctx context.Context, req *authpb.RefreshRequest) (*
 	}
 
 	if userGUID == "" || sessionID == "" {
-		// Try to parse from access token if provided in metadata
-		if tokens := md.Get("access_token"); len(tokens) > 0 {
-			claims, err := s.auth.ValidateAccessToken(ctx, tokens[0])
-			if err == nil {
-				userGUID = claims.GUID
-				sessionID = claims.SessionID
-			} else if errors.Is(err, services.ErrInvalidToken) {
-				// We need a way to parse expired tokens too.
-				// For now, let's just return error and let the gateway handle it.
-				return nil, status.Error(codes.Unauthenticated, "invalid or expired access token")
+		accessToken := req.AccessToken
+		if accessToken == "" {
+			if tokens := md.Get("access_token"); len(tokens) > 0 {
+				accessToken = tokens[0]
 			}
 		}
+
+		claims, err := s.auth.ParseTokenAllowExpired(accessToken)
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, "invalid access token")
+		}
+		userGUID = claims.GUID
+		sessionID = claims.SessionID
 	}
 
 	tokenPair, err := s.auth.RefreshTokens(ctx, req.RefreshToken, userGUID, sessionID, userAgent, ip)
@@ -120,7 +113,7 @@ func (s *AuthServer) Refresh(ctx context.Context, req *authpb.RefreshRequest) (*
 	}, nil
 }
 
-func (s *AuthServer) Logout(ctx context.Context, req *authpb.LogoutRequest) (*authpb.Empty, error) {
+func (s *AuthServer) Logout(ctx context.Context, req *authpb.LogoutRequest) (*authpb.AuthEmpty, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "missing metadata")
@@ -140,7 +133,7 @@ func (s *AuthServer) Logout(ctx context.Context, req *authpb.LogoutRequest) (*au
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &authpb.Empty{}, nil
+	return &authpb.AuthEmpty{}, nil
 }
 
 func (s *AuthServer) GetProfileGUID(ctx context.Context, req *authpb.GetProfileGUIDRequest) (*authpb.GetProfileGUIDResponse, error) {

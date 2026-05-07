@@ -36,7 +36,7 @@ type AuthServiceClient interface {
 	Verify(ctx context.Context, in *VerifyRequest, opts ...grpc.CallOption) (*VerifyResponse, error)
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*LoginResponse, error)
-	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*Empty, error)
+	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*AuthEmpty, error)
 	GetProfileGUID(ctx context.Context, in *GetProfileGUIDRequest, opts ...grpc.CallOption) (*GetProfileGUIDResponse, error)
 	ValidateToken(ctx context.Context, in *ValidateTokenRequest, opts ...grpc.CallOption) (*ValidateTokenResponse, error)
 }
@@ -89,9 +89,9 @@ func (c *authServiceClient) Refresh(ctx context.Context, in *RefreshRequest, opt
 	return out, nil
 }
 
-func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*AuthEmpty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(AuthEmpty)
 	err := c.cc.Invoke(ctx, AuthService_Logout_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ type AuthServiceServer interface {
 	Verify(context.Context, *VerifyRequest) (*VerifyResponse, error)
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	Refresh(context.Context, *RefreshRequest) (*LoginResponse, error)
-	Logout(context.Context, *LogoutRequest) (*Empty, error)
+	Logout(context.Context, *LogoutRequest) (*AuthEmpty, error)
 	GetProfileGUID(context.Context, *GetProfileGUIDRequest) (*GetProfileGUIDResponse, error)
 	ValidateToken(context.Context, *ValidateTokenRequest) (*ValidateTokenResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
@@ -152,7 +152,7 @@ func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*Lo
 func (UnimplementedAuthServiceServer) Refresh(context.Context, *RefreshRequest) (*LoginResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Refresh not implemented")
 }
-func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*Empty, error) {
+func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*AuthEmpty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
 }
 func (UnimplementedAuthServiceServer) GetProfileGUID(context.Context, *GetProfileGUIDRequest) (*GetProfileGUIDResponse, error) {

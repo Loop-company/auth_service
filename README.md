@@ -1,97 +1,54 @@
 # Auth Service
 
-Auth service for registration, email verification, login, token refresh, and logout.
+gRPC service for registration, email verification, login, token refresh, logout, and access token validation.
 
-## Project layout
+## Architecture Role
 
-- `auth/` - Go application source code
-- `.github/workflows/ci.yml` - CI/CD pipeline for the lab
-- `docker-compose.yml` - local infrastructure for the service
+- Receives calls from HTTP Gateway over gRPC.
+- Stores users and refresh sessions in PostgreSQL.
+- Stores pending email verification codes in Redis.
+- Publishes auth events to Kafka.
+- Publishes `user.registered` events to `user.events` so User Service can create a profile.
 
-## Local run
+## Kafka Events
 
-1. Create environment variables for the service.
-2. Build the containers:
+Auth Service publishes the shared analytics event envelope:
 
-```powershell
-docker compose build
+```json
+{
+  "event_id": "uuid",
+  "user_id": "user-guid",
+  "event_type": "user.logged_in",
+  "source_service": "auth-service",
+  "payload": {
+    "email": "user@example.com"
+  },
+  "occurred_at": "2026-05-07T12:00:00Z"
+}
 ```
 
-3. Start the stack:
+Topics:
 
-```powershell
-docker compose up -d
-```
+- `auth.events` for auth activity.
+- `user.events` for user registration events consumed by User Service and Analytics Service.
 
-4. Check containers:
-
-```powershell
-docker compose ps
-```
-
-5. Stop the stack:
-
-```powershell
-docker compose down
-```
-
-## Required environment variables
-
-Example values:
+## Configuration
 
 ```env
-ACCESS_TTL=15m
-REFRESH_TTL=168h
-HTTP_PORT=:8080
+GRPC_PORT=50051
 AUTH_SECRET=change-me
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email
-SMTP_PASSWORD=your-app-password
-SMTP_FROM=Auth Service <your-email@example.com>
-POSTGRES_HOST=jwt-auth-db
+ACCESS_TTL=15m
+REFRESH_TTL=720h
+POSTGRES_HOST=db-auth
 POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=change-me
-POSTGRES_DB=jwt_db
+POSTGRES_USER=auth
+POSTGRES_PASSWORD=auth_password
+POSTGRES_DB=authdb
 POSTGRES_SSLMODE=disable
-REDIS_ADDR=jwt-auth-redis:6379
+REDIS_ADDR=redis-auth:6379
+KAFKA_BROKERS=kafka:9092
 ```
 
-## API
+## CI
 
-Base URL:
-
-```text
-http://localhost:8080
-```
-
-Available routes:
-
-- `POST /auth/register`
-- `POST /auth/verification`
-- `POST /auth/login`
-- `GET /auth/me`
-- `GET /auth/tokens`
-- `POST /auth/refresh`
-- `POST /auth/logout`
-
-## CI/CD for the lab
-
-The GitHub Actions pipeline contains the required jobs:
-
-- `build`
-- `lint`
-- `test`
-- `docker_build`
-- `docker_push`
-
-The `test` job produces a coverage artifact and fails if coverage is below `50%`.
-The `docker_push` job uses GitHub secrets and never stores Docker Hub credentials in the repository.
-
-## GitHub secrets and variables
-
-Add these repository secrets before pushing Docker images:
-
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN`
+The GitHub Actions workflow runs build, golangci-lint, tests with coverage, Docker build, and Docker push.

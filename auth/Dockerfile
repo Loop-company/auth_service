@@ -16,5 +16,5 @@ ENV LOG_LEVEL=debug
 
 COPY --from=builder /out/auth-service /app/main
 
-EXPOSE 8080
+EXPOSE 50051
 CMD ["/app/main"]

@@ -344,6 +344,7 @@ func (x *LoginResponse) GetRefreshExpiresAt() int64 {
 type RefreshRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RefreshToken  string                 `protobuf:"bytes,1,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	AccessToken   string                 `protobuf:"bytes,2,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -381,6 +382,13 @@ func (*RefreshRequest) Descriptor() ([]byte, []int) {
 func (x *RefreshRequest) GetRefreshToken() string {
 	if x != nil {
 		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *RefreshRequest) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
 	}
 	return ""
 }
@@ -597,26 +605,26 @@ func (x *ValidateTokenResponse) GetSessionId() string {
 	return ""
 }
 
-type Empty struct {
+type AuthEmpty struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Empty) Reset() {
-	*x = Empty{}
+func (x *AuthEmpty) Reset() {
+	*x = AuthEmpty{}
 	mi := &file_proto_auth_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Empty) String() string {
+func (x *AuthEmpty) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Empty) ProtoMessage() {}
+func (*AuthEmpty) ProtoMessage() {}
 
-func (x *Empty) ProtoReflect() protoreflect.Message {
+func (x *AuthEmpty) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_auth_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -628,8 +636,8 @@ func (x *Empty) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Empty.ProtoReflect.Descriptor instead.
-func (*Empty) Descriptor() ([]byte, []int) {
+// Deprecated: Use AuthEmpty.ProtoReflect.Descriptor instead.
+func (*AuthEmpty) Descriptor() ([]byte, []int) {
 	return file_proto_auth_proto_rawDescGZIP(), []int{12}
 }
 
@@ -656,9 +664,10 @@ const file_proto_auth_proto_rawDesc = "" +
 	"\faccess_token\x18\x02 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x03 \x01(\tR\frefreshToken\x12*\n" +
 	"\x11access_expires_at\x18\x04 \x01(\x03R\x0faccessExpiresAt\x12,\n" +
-	"\x12refresh_expires_at\x18\x05 \x01(\x03R\x10refreshExpiresAt\"5\n" +
+	"\x12refresh_expires_at\x18\x05 \x01(\x03R\x10refreshExpiresAt\"X\n" +
 	"\x0eRefreshRequest\x12#\n" +
-	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"\x0f\n" +
+	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\x12!\n" +
+	"\faccess_token\x18\x02 \x01(\tR\vaccessToken\"\x0f\n" +
 	"\rLogoutRequest\"\x17\n" +
 	"\x15GetProfileGUIDRequest\",\n" +
 	"\x16GetProfileGUIDResponse\x12\x12\n" +
@@ -668,14 +677,14 @@ const file_proto_auth_proto_rawDesc = "" +
 	"\x15ValidateTokenResponse\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"\a\n" +
-	"\x05Empty2\xa8\x03\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\"\v\n" +
+	"\tAuthEmpty2\xac\x03\n" +
 	"\vAuthService\x129\n" +
 	"\bRegister\x12\x15.auth.RegisterRequest\x1a\x16.auth.RegisterResponse\x123\n" +
 	"\x06Verify\x12\x13.auth.VerifyRequest\x1a\x14.auth.VerifyResponse\x120\n" +
 	"\x05Login\x12\x12.auth.LoginRequest\x1a\x13.auth.LoginResponse\x124\n" +
-	"\aRefresh\x12\x14.auth.RefreshRequest\x1a\x13.auth.LoginResponse\x12*\n" +
-	"\x06Logout\x12\x13.auth.LogoutRequest\x1a\v.auth.Empty\x12K\n" +
+	"\aRefresh\x12\x14.auth.RefreshRequest\x1a\x13.auth.LoginResponse\x12.\n" +
+	"\x06Logout\x12\x13.auth.LogoutRequest\x1a\x0f.auth.AuthEmpty\x12K\n" +
 	"\x0eGetProfileGUID\x12\x1b.auth.GetProfileGUIDRequest\x1a\x1c.auth.GetProfileGUIDResponse\x12H\n" +
 	"\rValidateToken\x12\x1a.auth.ValidateTokenRequest\x1a\x1b.auth.ValidateTokenResponseBDZBgithub.com/Egor4iksls4/DiscordEquivalent/backend/auth/proto;authpbb\x06proto3"
 
@@ -705,7 +714,7 @@ var file_proto_auth_proto_goTypes = []any{
 	(*GetProfileGUIDResponse)(nil), // 9: auth.GetProfileGUIDResponse
 	(*ValidateTokenRequest)(nil),   // 10: auth.ValidateTokenRequest
 	(*ValidateTokenResponse)(nil),  // 11: auth.ValidateTokenResponse
-	(*Empty)(nil),                  // 12: auth.Empty
+	(*AuthEmpty)(nil),              // 12: auth.AuthEmpty
 }
 var file_proto_auth_proto_depIdxs = []int32{
 	0,  // 0: auth.AuthService.Register:input_type -> auth.RegisterRequest
@@ -719,7 +728,7 @@ var file_proto_auth_proto_depIdxs = []int32{
 	3,  // 8: auth.AuthService.Verify:output_type -> auth.VerifyResponse
 	5,  // 9: auth.AuthService.Login:output_type -> auth.LoginResponse
 	5,  // 10: auth.AuthService.Refresh:output_type -> auth.LoginResponse
-	12, // 11: auth.AuthService.Logout:output_type -> auth.Empty
+	12, // 11: auth.AuthService.Logout:output_type -> auth.AuthEmpty
 	9,  // 12: auth.AuthService.GetProfileGUID:output_type -> auth.GetProfileGUIDResponse
 	11, // 13: auth.AuthService.ValidateToken:output_type -> auth.ValidateTokenResponse
 	7,  // [7:14] is the sub-list for method output_type
