@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -55,5 +56,41 @@ func TestVerifyRefreshToken(t *testing.T) {
 func TestParseTokenRejectsInvalidToken(t *testing.T) {
 	if _, err := ParseToken("not-a-token", "secret-key"); err == nil {
 		t.Fatal("expected ParseToken to fail for malformed token")
+	}
+}
+
+func TestNewTokenPairWithRefreshTTLPopulatesRefreshExpiry(t *testing.T) {
+	user := entity.User{GUID: "user-1"}
+	tokenPair, err := NewTokenPairWithRefreshTTL(user, time.Minute, time.Hour, "secret-key", "session-1")
+	if err != nil {
+		t.Fatalf("NewTokenPairWithRefreshTTL returned error: %v", err)
+	}
+
+	if tokenPair.RefreshExpiresAt.IsZero() {
+		t.Fatal("refresh expiry was not populated")
+	}
+	if !tokenPair.RefreshExpiresAt.After(tokenPair.AccessExpiresAt) {
+		t.Fatalf("refresh expiry %v should be after access expiry %v", tokenPair.RefreshExpiresAt, tokenPair.AccessExpiresAt)
+	}
+}
+
+func TestParseTokenAllowExpiredReturnsClaims(t *testing.T) {
+	user := entity.User{GUID: "user-1"}
+	tokenPair, err := NewTokenPairWithRefreshTTL(user, -time.Minute, time.Hour, "secret-key", "session-1")
+	if err != nil {
+		t.Fatalf("NewTokenPairWithRefreshTTL returned error: %v", err)
+	}
+
+	_, err = ParseToken(tokenPair.AccessToken, "secret-key")
+	if !errors.Is(err, ErrExpiredToken) {
+		t.Fatalf("expected ErrExpiredToken, got %v", err)
+	}
+
+	claims, err := ParseTokenAllowExpired(tokenPair.AccessToken, "secret-key")
+	if err != nil {
+		t.Fatalf("ParseTokenAllowExpired returned error: %v", err)
+	}
+	if claims.GUID != user.GUID || claims.SessionID != "session-1" {
+		t.Fatalf("unexpected claims: %+v", claims)
 	}
 }
